@@ -29,9 +29,8 @@ Matrix44f inverse(Matrix44f m);
 bool worldToRaster(Vec3f *raster, const Vec3f pWorld,
                    const Matrix44f worldToCamera, const float aperture_width,
                    const float aperture_height, const float focal_len,
-                   const float near_clipping_plane,
-                   const float far_clipping_plane, const float image_width,
-                   const float image_height);
+                   const float near_clipping_plane, const uint32_t image_width,
+                   const uint32_t image_height);
 
 Matrix44f identity() {
   Matrix44f identity = {.mat = {
@@ -163,9 +162,8 @@ Matrix44f inverse(Matrix44f m) {
 bool worldToRaster(Vec3f *raster, const Vec3f pWorld,
                    const Matrix44f worldToCamera, const float aperture_width,
                    const float aperture_height, const float focal_len,
-                   const float near_clipping_plane,
-                   const float far_clipping_plane, const float image_width,
-                   const float image_height) {
+                   const float near_clipping_plane, const uint32_t image_width,
+                   const uint32_t image_height) {
   Vec3f camera = multVecMatrix(pWorld, worldToCamera);
   Vec2f screen;
   screen.x = camera.x / -camera.z * near_clipping_plane;
@@ -188,6 +186,44 @@ bool worldToRaster(Vec3f *raster, const Vec3f pWorld,
   return true;
 }
 
-void pixelInTriangle(Vec3f a, Vec3f b, Vec3f c, size_t h, size_t w) {}
+void ccanva_render(uint32_t *image_buffer, uint32_t *z_buffer,
+                   const Vec3f v0World, const Vec3f v1World,
+                   const Vec3f v2World, const Matrix44f worldToCamera,
+                   const float aperture_width, const float aperture_height,
+                   const float focal_len, const uint32_t image_width,
+                   const uint32_t image_height) {
+  Vec3f v0Raster, v1Raster, v2Raster;
+  float near = 1;
+  worldToRaster(&v0Raster, v0World, worldToCamera, aperture_width,
+                aperture_height, focal_len, near, image_width, image_height);
+  worldToRaster(&v1Raster, v1World, worldToCamera, aperture_width,
+                aperture_height, focal_len, near, image_width, image_height);
+  worldToRaster(&v2Raster, v2World, worldToCamera, aperture_width,
+                aperture_height, focal_len, near, image_width, image_height);
+  // Calculate the bounding box of the triangle
+  float max_x = fmax(fmax(v0Raster.x, v1Raster.x), v2Raster.x);
+  float max_y = fmax(fmax(v0Raster.y, v1Raster.y), v2Raster.y);
+  float min_x = fmin(fmin(v0Raster.x, v1Raster.x), v2Raster.x);
+  float min_y = fmin(fmin(v0Raster.y, v1Raster.y), v2Raster.y);
+  for (uint32_t j = min_y; j < max_y; ++j) {
+    for (uint32_t k = min_x; k < max_x; ++k) {
 
+      Vec3f bary = barycentric(v0Raster, v1Raster, v2Raster,
+                               (Vec3f){.x = k, .y = j, .z = 0});
+      // Point is outside the triangle
+      if (bary.x == 0 && bary.y == 0 && bary.z == 0) {
+        continue;
+      }
+      float depth = 1 / (bary.x * (1 / v0Raster.z) + bary.y * (1 / v1Raster.z) +
+                         bary.z * (1 / v2Raster.z));
+      // Point is behind previously computed point
+      if (z_buffer[j * image_width + k] < depth) {
+        continue;
+      }
+      z_buffer[j * image_width + k] = depth;
+      image_buffer[j * image_width + k] = RGBA(
+          (int)(255 * bary.x), (int)(255 * bary.y), (int)(255 * bary.z), 255);
+    }
+  }
+}
 #endif // CG_H_

@@ -3,6 +3,7 @@
 #include <SDL2/SDL_events.h>
 #include <SDL2/SDL_render.h>
 #include <SDL2/SDL_surface.h>
+#include <SDL2/SDL_timer.h>
 #include <SDL2/SDL_video.h>
 #include <assert.h>
 
@@ -118,37 +119,25 @@ int main(void) {
                                      {14.777467, 29.361945, 27.993464, 1}}};
   Matrix44f worldToCamera = inverse(cameraToWorld);
 
-  float aperture_width = 50, aperture_height = 50, focal_len = 20, near = 1,
-        far = 1;
+  float aperture_width = 50, aperture_height = 50, focal_len = 20;
   uint32_t image_width = 512, image_height = 512;
+
   uint32_t image_buffer[image_width * image_height];
+  float z_buffer[image_width * image_height];
   memset(image_buffer, 0, image_width * image_height);
+  for (int i = 0; i < image_height; ++i) {
+    for (int j = 0; j < image_width; ++j) {
+      z_buffer[i * image_width + j] = FLT_MAX;
+    }
+  }
 
   for (uint32_t i = 0; i < numTris; ++i) {
     const Vec3f v0World = verts[tris[i * 3]];
     const Vec3f v1World = verts[tris[i * 3 + 1]];
     const Vec3f v2World = verts[tris[i * 3 + 2]];
-    Vec3f v0Raster, v1Raster, v2Raster;
-    worldToRaster(&v0Raster, v0World, worldToCamera, aperture_width,
-                  aperture_height, focal_len, near, far, image_width,
-                  image_height);
-    worldToRaster(&v1Raster, v1World, worldToCamera, aperture_width,
-                  aperture_height, focal_len, near, far, image_width,
-                  image_height);
-    worldToRaster(&v2Raster, v2World, worldToCamera, aperture_width,
-                  aperture_height, focal_len, near, far, image_width,
-                  image_height);
-    for (uint32_t j = 0; j < image_height; ++j) {
-      for (uint32_t k = 0; k < image_width; ++k) {
-        Vec3f bary = barycentric(v0Raster, v1Raster, v2Raster,
-                                 (Vec3f){.x = k, .y = j, .z = 0});
-        if (bary.x == 0 && bary.y == 0 && bary.z == 0) {
-          continue;
-        }
-        image_buffer[j * image_height + k] = RGBA(
-            (int)(255 * bary.x), (int)(255 * bary.y), (int)(255 * bary.z), 255);
-      }
-    }
+    ccanva_render(image_buffer, z_buffer, v0World, v1World, v2World,
+                  worldToCamera, aperture_width, aperture_height, focal_len,
+                  image_width, image_height);
   }
 
   if (SDL_Init(SDL_INIT_VIDEO) < 0)
@@ -181,6 +170,7 @@ int main(void) {
   // SDL_BlitSurface(texture, NULL, window_surface, NULL);
   // SDL_UpdateWindowSurface(window);
   bool quit = false;
+  Uint32 start = SDL_GetTicks();
   while (!quit) {
     SDL_Event event;
     SDL_PollEvent(&event);
@@ -191,6 +181,11 @@ int main(void) {
     default:
       break;
     }
+    Uint32 end = SDL_GetTicks();
+    if (end - start < 33) {
+      SDL_Delay(33 - (end - start));
+    }
+    start = end;
   }
   // SDL_FreeSurface(texture);
   SDL_DestroyRenderer(renderer);
