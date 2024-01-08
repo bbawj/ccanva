@@ -19,6 +19,8 @@ typedef struct {
   float x, y, z;
 } Vec3f;
 
+#include "cow.h"
+
 typedef struct {
   float mat[4][4];
 } Matrix44f;
@@ -173,6 +175,7 @@ bool worldToRaster(Vec3f *raster, const Vec3f pWorld,
   float bottom = -top;
   float right = top * (aperture_width / aperture_height);
   float left = -right;
+
   ndc.x = 2 * screen.x / (right - left) - (right + left) / (right - left);
   ndc.y = 2 * screen.y / (top - bottom) - (top + bottom) / (top - bottom);
 
@@ -186,12 +189,12 @@ bool worldToRaster(Vec3f *raster, const Vec3f pWorld,
   return true;
 }
 
-void ccanva_render(uint32_t *image_buffer, uint32_t *z_buffer,
-                   const Vec3f v0World, const Vec3f v1World,
-                   const Vec3f v2World, const Matrix44f worldToCamera,
-                   const float aperture_width, const float aperture_height,
-                   const float focal_len, const uint32_t image_width,
-                   const uint32_t image_height) {
+void ccanva_render(uint32_t *image_buffer, float *z_buffer, const Vec3f v0World,
+                   const Vec3f v1World, const Vec3f v2World,
+                   const Matrix44f worldToCamera, const float aperture_width,
+                   const float aperture_height, const float focal_len,
+                   const uint32_t image_width, const uint32_t image_height,
+                   bool perspective_correct) {
   Vec3f v0Raster, v1Raster, v2Raster;
   float near = 1;
   worldToRaster(&v0Raster, v0World, worldToCamera, aperture_width,
@@ -201,28 +204,69 @@ void ccanva_render(uint32_t *image_buffer, uint32_t *z_buffer,
   worldToRaster(&v2Raster, v2World, worldToCamera, aperture_width,
                 aperture_height, focal_len, near, image_width, image_height);
   // Calculate the bounding box of the triangle
-  float max_x = fmax(fmax(v0Raster.x, v1Raster.x), v2Raster.x);
-  float max_y = fmax(fmax(v0Raster.y, v1Raster.y), v2Raster.y);
-  float min_x = fmin(fmin(v0Raster.x, v1Raster.x), v2Raster.x);
-  float min_y = fmin(fmin(v0Raster.y, v1Raster.y), v2Raster.y);
-  for (uint32_t j = min_y; j < max_y; ++j) {
-    for (uint32_t k = min_x; k < max_x; ++k) {
+  float max_x =
+      fmin(fmax(fmax(v0Raster.x, v1Raster.x), v2Raster.x), image_width);
+  float max_y =
+      fmin(fmax(fmax(v0Raster.y, v1Raster.y), v2Raster.y), image_height);
+  float min_x = fmax(fmin(fmin(v0Raster.x, v1Raster.x), v2Raster.x), 0);
+  float min_y = fmax(fmin(fmin(v0Raster.y, v1Raster.y), v2Raster.y), 0);
 
-      Vec3f bary = barycentric(v0Raster, v1Raster, v2Raster,
-                               (Vec3f){.x = k, .y = j, .z = 0});
+  if (perspective_correct) {
+    v0Raster.z = 1 / v0Raster.z;
+    v1Raster.z = 1 / v1Raster.z;
+    v2Raster.z = 1 / v2Raster.z;
+  }
+
+  Vec2f w0_step = {.x = (v2Raster.y - v1Raster.y),
+                   .y = -(v2Raster.x - v1Raster.x)};
+  Vec2f w1_step = {.x = (v0Raster.y - v2Raster.y),
+                   .y = -(v0Raster.x - v2Raster.x)};
+  Vec2f w2_step = {.x = (v1Raster.y - v0Raster.y),
+                   .y = -(v1Raster.x - v0Raster.x)};
+
+  float w0_old = edgeFunction(v1Raster, v2Raster, (Vec3f){min_x, min_y, 0});
+  float w1_old = edgeFunction(v2Raster, v0Raster, (Vec3f){min_x, min_y, 0});
+  float w2_old = edgeFunction(v0Raster, v1Raster, (Vec3f){min_x, min_y, 0});
+  float area = edgeFunction(v0Raster, v1Raster, v2Raster);
+  for (uint32_t j = min_y; j < max_y;
+       ++j, w0_old += w0_step.y, w1_old += w1_step.y, w2_old += w2_step.y) {
+    float w0_temp = w0_old;
+    float w1_temp = w1_old;
+    float w2_temp = w2_old;
+
+    for (uint32_t k = min_x; k < max_x; ++k, w0_temp += w0_step.x,
+                  w1_temp += w1_step.x, w2_temp += w2_step.x) {
       // Point is outside the triangle
-      if (bary.x == 0 && bary.y == 0 && bary.z == 0) {
+      if (w0_temp < 0 || w1_temp < 0 || w2_temp < 0) {
         continue;
       }
-      float depth = 1 / (bary.x * (1 / v0Raster.z) + bary.y * (1 / v1Raster.z) +
-                         bary.z * (1 / v2Raster.z));
+
+      float w0 = w0_temp / area;
+      float w1 = w1_temp / area;
+      float w2 = w2_temp / area;
+      float depth;
+      if (perspective_correct) {
+        depth = 1 / (w0 * v0Raster.z + w1 * v1Raster.z + w2 * v2Raster.z);
+      } else {
+        depth = 1 / (w0 * (1 / v0Raster.z) + w1 * (1 / v1Raster.z) +
+                     w2 * (1 / v2Raster.z));
+      }
       // Point is behind previously computed point
       if (z_buffer[j * image_width + k] < depth) {
         continue;
       }
       z_buffer[j * image_width + k] = depth;
-      image_buffer[j * image_width + k] = RGBA(
-          (int)(255 * bary.x), (int)(255 * bary.y), (int)(255 * bary.z), 255);
+      if (perspective_correct) {
+        w0 *= depth;
+        w1 *= depth;
+        w2 *= depth;
+        image_buffer[j * image_width + k] =
+            RGBA((int)(255 * v0Raster.z * w0), (int)(255 * v1Raster.z * w1),
+                 (int)(255 * v2Raster.z * w2), 255);
+      } else {
+        image_buffer[j * image_width + k] =
+            RGBA((int)(255 * w0), (int)(255 * w1), (int)(255 * w2), 255);
+      }
     }
   }
 }

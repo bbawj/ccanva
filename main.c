@@ -58,7 +58,7 @@ const Vec3f verts[146] = {
     {0, -3.7334, 18.358},    {0, -3.7334, 18.358},   {0, -1.2003, 2.3526},
     {0, -5, 4.3526},         {0, -5, 4.3526}};
 
-const uint32_t numTris = 128;
+const uint32_t numTris = 3156;
 
 //[comment]
 // Triangle index array. A triangle has 3 vertices. Each successive group of 3
@@ -113,13 +113,13 @@ const uint32_t tris[128 * 3] = {
     112, 143, 116, 116, 143, 144, 116, 145, 119};
 
 int main(void) {
-  Matrix44f cameraToWorld = {.mat = {{0.871214, 0, -0.490904, 0},
-                                     {-0.192902, 0.919559, -0.342346, 0},
-                                     {0.451415, 0.392953, 0.801132, 0},
-                                     {14.777467, 29.361945, 27.993464, 1}}};
-  Matrix44f worldToCamera = inverse(cameraToWorld);
+  Matrix44f worldToCamera = {.mat = {{0.707107, -0.331295, 0},
+                                     {0, 0.883452, 0.468521, 0},
+                                     {-0.707107, -0.331295, 0.624695, 0},
+                                     {-1.63871, -5.747777, -40.400412, 1}}};
+  // Matrix44f worldToCamera = inverse(cameraToWorld);
 
-  float aperture_width = 50, aperture_height = 50, focal_len = 20;
+  float aperture_width = 25, aperture_height = 25, focal_len = 100;
   uint32_t image_width = 512, image_height = 512;
 
   uint32_t image_buffer[image_width * image_height];
@@ -130,27 +130,35 @@ int main(void) {
       z_buffer[i * image_width + j] = FLT_MAX;
     }
   }
+  uint32_t image_buffer2[image_width * image_height];
+  float z_buffer2[image_width * image_height];
+  memset(image_buffer2, 0, image_width * image_height);
+  for (int i = 0; i < image_height; ++i) {
+    for (int j = 0; j < image_width; ++j) {
+      z_buffer2[i * image_width + j] = FLT_MAX;
+    }
+  }
 
   for (uint32_t i = 0; i < numTris; ++i) {
-    const Vec3f v0World = verts[tris[i * 3]];
-    const Vec3f v1World = verts[tris[i * 3 + 1]];
-    const Vec3f v2World = verts[tris[i * 3 + 2]];
+    const Vec3f v0World = vertices[nvertices[i * 3]];
+    const Vec3f v1World = vertices[nvertices[i * 3 + 1]];
+    const Vec3f v2World = vertices[nvertices[i * 3 + 2]];
     ccanva_render(image_buffer, z_buffer, v0World, v1World, v2World,
                   worldToCamera, aperture_width, aperture_height, focal_len,
-                  image_width, image_height);
+                  image_width, image_height, false);
   }
 
   if (SDL_Init(SDL_INIT_VIDEO) < 0)
     return 1;
   SDL_Window *window = SDL_CreateWindow("cg", SDL_WINDOWPOS_UNDEFINED,
-                                        SDL_WINDOWPOS_UNDEFINED, 512, 512, 0);
+                                        SDL_WINDOWPOS_UNDEFINED, 1024, 512, 0);
   assert(window);
 
   SDL_Renderer *renderer =
       SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
   assert(renderer);
 
-  SDL_Texture *buf = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA32,
+  SDL_Texture *buf = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_ABGR32,
                                        SDL_TEXTUREACCESS_STREAMING, 512, 512);
   void *pixels;
   int pitch;
@@ -162,13 +170,29 @@ int main(void) {
   SDL_UnlockTexture(buf);
   SDL_SetRenderDrawColor(renderer, 0, 0, 0, 0);
   SDL_RenderClear(renderer);
-  SDL_RenderCopy(renderer, buf, NULL, NULL);
+  SDL_RenderCopy(renderer, buf, NULL, &(SDL_Rect){0, 0, 512, 512});
+
+  SDL_Texture *buf2 = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_ABGR32,
+                                        SDL_TEXTUREACCESS_STREAMING, 512, 512);
+  void *pixels2;
+  int pitch2;
+  for (uint32_t i = 0; i < numTris; ++i) {
+    const Vec3f v0World = vertices[nvertices[i * 3]];
+    const Vec3f v1World = vertices[nvertices[i * 3 + 1]];
+    const Vec3f v2World = vertices[nvertices[i * 3 + 2]];
+    ccanva_render(image_buffer2, z_buffer2, v0World, v1World, v2World,
+                  worldToCamera, aperture_width, aperture_height, focal_len,
+                  image_width, image_height, true);
+  }
+  SDL_LockTexture(buf2, NULL, &pixels2, &pitch2);
+  for (int i = 0; i < image_height; ++i) {
+    memcpy(pixels2 + i * pitch2, image_buffer2 + i * image_width,
+           image_width * sizeof(uint32_t));
+  }
+  SDL_UnlockTexture(buf2);
+  SDL_RenderCopy(renderer, buf2, NULL, &(SDL_Rect){512, 0, 512, 512});
   SDL_RenderPresent(renderer);
 
-  // SDL_Surface *texture = SDL_CreateRGBSurfaceWithFormatFrom(
-  //     image_buffer, image_width, image_height, 0, 0, SDL_PIXELFORMAT_RGBA32);
-  // SDL_BlitSurface(texture, NULL, window_surface, NULL);
-  // SDL_UpdateWindowSurface(window);
   bool quit = false;
   Uint32 start = SDL_GetTicks();
   while (!quit) {

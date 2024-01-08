@@ -1,2 +1,2 @@
 all:
-	cc main.c -Wall -Wextra -lSDL2 -lm -o main && ./main
+	cc main.c -Wall -Wextra -ggdb -lSDL2 -lm -o main && ./main
