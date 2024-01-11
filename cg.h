@@ -7,6 +7,8 @@
 #include <stdio.h>
 #include <string.h>
 
+#define AA 2
+
 typedef struct {
   int x, y;
 } Vec2i;
@@ -223,6 +225,9 @@ void ccanva_render(uint32_t *image_buffer, float *z_buffer, const Vec3f v0World,
                    .y = -(v0Raster.x - v2Raster.x)};
   Vec2f w2_step = {.x = (v1Raster.y - v0Raster.y),
                    .y = -(v1Raster.x - v0Raster.x)};
+  Vec2f w0_step_aa = {w0_step.x / AA, w0_step.y / AA};
+  Vec2f w1_step_aa = {w1_step.x / AA, w1_step.y / AA};
+  Vec2f w2_step_aa = {w2_step.x / AA, w2_step.y / AA};
 
   float w0_old = edgeFunction(v1Raster, v2Raster, (Vec3f){min_x, min_y, 0});
   float w1_old = edgeFunction(v2Raster, v0Raster, (Vec3f){min_x, min_y, 0});
@@ -236,36 +241,64 @@ void ccanva_render(uint32_t *image_buffer, float *z_buffer, const Vec3f v0World,
 
     for (uint32_t k = min_x; k < max_x; ++k, w0_temp += w0_step.x,
                   w1_temp += w1_step.x, w2_temp += w2_step.x) {
-      // Point is outside the triangle
-      if (w0_temp < 0 || w1_temp < 0 || w2_temp < 0) {
-        continue;
-      }
+      int visible_subpixels = 0;
+      float red = 0.f;
+      float green = 0.f;
+      float blue = 0.f;
+      float w0_aa = w0_temp;
+      float w1_aa = w1_temp;
+      float w2_aa = w2_temp;
 
-      float w0 = w0_temp / area;
-      float w1 = w1_temp / area;
-      float w2 = w2_temp / area;
-      float depth;
-      if (perspective_correct) {
-        depth = 1 / (w0 * v0Raster.z + w1 * v1Raster.z + w2 * v2Raster.z);
-      } else {
-        depth = 1 / (w0 * (1 / v0Raster.z) + w1 * (1 / v1Raster.z) +
-                     w2 * (1 / v2Raster.z));
+      for (int q = 0; q < AA; ++q, w0_aa += w0_step_aa.y, w1_aa += w1_step_aa.y,
+               w2_aa += w2_step_aa.y) {
+        float w0_aa_temp = w0_aa;
+        float w1_aa_temp = w1_aa;
+        float w2_aa_temp = w2_aa;
+
+        for (int r = 0; r < AA; ++r, w0_aa_temp += w0_step_aa.x,
+                 w1_aa_temp += w1_step_aa.x, w2_aa_temp += w2_step_aa.x) {
+          // Point is outside the triangle
+          if (w0_aa_temp < 0 || w1_aa_temp < 0 || w2_aa_temp < 0) {
+            continue;
+          }
+
+          float w0 = w0_aa_temp / area;
+          float w1 = w1_aa_temp / area;
+          float w2 = w2_aa_temp / area;
+          float depth;
+          if (perspective_correct) {
+            depth = 1 / (w0 * v0Raster.z + w1 * v1Raster.z + w2 * v2Raster.z);
+          } else {
+            depth = 1 / (w0 * (1 / v0Raster.z) + w1 * (1 / v1Raster.z) +
+                         w2 * (1 / v2Raster.z));
+          }
+          // Point is behind previously computed point
+          if (z_buffer[j * image_width + k] < depth) {
+            continue;
+          }
+          z_buffer[j * image_width + k] = depth;
+
+          if (perspective_correct) {
+            w0 *= depth;
+            w1 *= depth;
+            w2 *= depth;
+            red += v0Raster.z * w0;
+            green += v1Raster.z * w1;
+            blue += v2Raster.z * w2;
+          } else {
+            red += w0;
+            green += w1;
+            blue += w2;
+          }
+          ++visible_subpixels;
+        }
       }
-      // Point is behind previously computed point
-      if (z_buffer[j * image_width + k] < depth) {
-        continue;
-      }
-      z_buffer[j * image_width + k] = depth;
-      if (perspective_correct) {
-        w0 *= depth;
-        w1 *= depth;
-        w2 *= depth;
+      // Only render the pixel if there is something to render
+      if (red > 0 || blue > 0 || green > 0) {
         image_buffer[j * image_width + k] =
-            RGBA((int)(255 * v0Raster.z * w0), (int)(255 * v1Raster.z * w1),
-                 (int)(255 * v2Raster.z * w2), 255);
-      } else {
-        image_buffer[j * image_width + k] =
-            RGBA((int)(255 * w0), (int)(255 * w1), (int)(255 * w2), 255);
+            RGBA((int)(255 * red / visible_subpixels),
+                 (int)(255 * green / visible_subpixels),
+                 (int)(255 * blue / visible_subpixels), 255);
       }
     }
   }
