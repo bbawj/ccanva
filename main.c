@@ -1,3 +1,5 @@
+#define OPT_BACKFACE_CULLING
+
 #include "cg.h"
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_events.h>
@@ -113,6 +115,16 @@ const uint32_t tris[128 * 3] = {
     112, 143, 116, 116, 143, 144, 116, 145, 119};
 
 int main(void) {
+  if (SDL_Init(SDL_INIT_VIDEO) < 0)
+    return 1;
+  SDL_Window *window = SDL_CreateWindow("cg", SDL_WINDOWPOS_UNDEFINED,
+                                        SDL_WINDOWPOS_UNDEFINED, 1024, 512, 0);
+  assert(window);
+
+  SDL_Renderer *renderer =
+      SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
+  assert(renderer);
+
   Matrix44f worldToCamera = {.mat = {{0.707107, -0.331295, 0},
                                      {0, 0.883452, 0.468521, 0},
                                      {-0.707107, -0.331295, 0.624695, 0},
@@ -139,6 +151,7 @@ int main(void) {
     }
   }
 
+  Uint64 start = SDL_GetTicks64();
   for (uint32_t i = 0; i < numTris; ++i) {
     const Vec3f v0World = vertices[nvertices[i * 3]];
     const Vec3f v1World = vertices[nvertices[i * 3 + 1]];
@@ -147,16 +160,8 @@ int main(void) {
                   worldToCamera, aperture_width, aperture_height, focal_len,
                   image_width, image_height, false);
   }
-
-  if (SDL_Init(SDL_INIT_VIDEO) < 0)
-    return 1;
-  SDL_Window *window = SDL_CreateWindow("cg", SDL_WINDOWPOS_UNDEFINED,
-                                        SDL_WINDOWPOS_UNDEFINED, 1024, 512, 0);
-  assert(window);
-
-  SDL_Renderer *renderer =
-      SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
-  assert(renderer);
+  Uint64 end = SDL_GetTicks64();
+  printf("Render time taken: %ld\n", end - start);
 
   SDL_Texture *buf = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_ABGR32,
                                        SDL_TEXTUREACCESS_STREAMING, 512, 512);
@@ -194,7 +199,7 @@ int main(void) {
   SDL_RenderPresent(renderer);
 
   bool quit = false;
-  Uint32 start = SDL_GetTicks();
+  start = SDL_GetTicks();
   while (!quit) {
     SDL_Event event;
     SDL_PollEvent(&event);

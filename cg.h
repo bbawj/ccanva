@@ -9,6 +9,12 @@
 
 #define AA 2
 
+#ifdef OPT_BACKFACE_CULLING
+#ifndef BACKFACE_CULLING_THRESHOLD
+#define BACKFACE_CULLING_THRESHOLD M_PI
+#endif // BACKFACE_CULLING_THRESHOLD
+#endif // OPT_BACKFACE_CULLING
+
 typedef struct {
   int x, y;
 } Vec2i;
@@ -57,12 +63,28 @@ Vec3f multVecMatrix(Vec3f v, Matrix44f m) {
   return res;
 }
 
+float dot(Vec3f a, Vec3f b) { return a.x * b.x + a.y * b.y + a.z * b.z; }
+
 Vec3f crossProduct(Vec3f a, Vec3f b) {
   return (Vec3f){
       .x = a.y * b.z - a.z * b.y,
       .y = a.x * b.z - a.z * b.x,
       .z = a.x * b.y - b.y * a.x,
   };
+}
+
+Vec3f minus(Vec3f a, Vec3f b) {
+  return (Vec3f){
+      .x = a.x - b.x,
+      .y = a.y - b.y,
+      .z = a.z - b.z,
+  };
+}
+
+Vec3f normalize(Vec3f a) {
+  float magnitude = sqrtf(dot(a, a));
+  float inv_mag = 1 / magnitude;
+  return (Vec3f){a.x * inv_mag, a.y * inv_mag, a.z * inv_mag};
 }
 
 // Signed area of the parallelogram defined by vectors (c-a) and (b-a)
@@ -205,6 +227,8 @@ void ccanva_render(uint32_t *image_buffer, float *z_buffer, const Vec3f v0World,
                 aperture_height, focal_len, near, image_width, image_height);
   worldToRaster(&v2Raster, v2World, worldToCamera, aperture_width,
                 aperture_height, focal_len, near, image_width, image_height);
+  Vec3f normal = normalize(
+      crossProduct(minus(v1Raster, v0Raster), minus(v2Raster, v1Raster)));
   // Calculate the bounding box of the triangle
   float max_x =
       fmin(fmax(fmax(v0Raster.x, v1Raster.x), v2Raster.x), image_width);
@@ -219,6 +243,7 @@ void ccanva_render(uint32_t *image_buffer, float *z_buffer, const Vec3f v0World,
     v2Raster.z = 1 / v2Raster.z;
   }
 
+  // Pre calculate the step value as we iterate through the image buffer
   Vec2f w0_step = {.x = (v2Raster.y - v1Raster.y),
                    .y = -(v2Raster.x - v1Raster.x)};
   Vec2f w1_step = {.x = (v0Raster.y - v2Raster.y),
@@ -229,6 +254,8 @@ void ccanva_render(uint32_t *image_buffer, float *z_buffer, const Vec3f v0World,
   Vec2f w1_step_aa = {w1_step.x / AA, w1_step.y / AA};
   Vec2f w2_step_aa = {w2_step.x / AA, w2_step.y / AA};
 
+  // Pre calculate the initial barycentric weights at the start of the bounding
+  // box
   float w0_old = edgeFunction(v1Raster, v2Raster, (Vec3f){min_x, min_y, 0});
   float w1_old = edgeFunction(v2Raster, v0Raster, (Vec3f){min_x, min_y, 0});
   float w2_old = edgeFunction(v0Raster, v1Raster, (Vec3f){min_x, min_y, 0});
@@ -249,6 +276,13 @@ void ccanva_render(uint32_t *image_buffer, float *z_buffer, const Vec3f v0World,
       float w1_aa = w1_temp;
       float w2_aa = w2_temp;
 
+#ifdef OPT_BACKFACE_CULLING
+      Vec3f view_direction = {-k, -j, 0};
+      if (acosf(dot(normalize(view_direction), normal)) >
+          BACKFACE_CULLING_THRESHOLD) {
+        continue;
+      }
+#endif
       for (int q = 0; q < AA; ++q, w0_aa += w0_step_aa.y, w1_aa += w1_step_aa.y,
                w2_aa += w2_step_aa.y) {
         float w0_aa_temp = w0_aa;
