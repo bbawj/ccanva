@@ -60,6 +60,14 @@ Vec3f multVecMatrix(Vec3f v, Matrix44f m) {
       v.x * m.mat[0][1] + v.y * m.mat[1][1] + v.z * m.mat[2][1] + m.mat[3][1];
   res.z =
       v.x * m.mat[0][2] + v.y * m.mat[1][2] + v.z * m.mat[2][2] + m.mat[3][2];
+  float w =
+      v.x * m.mat[0][3] + v.y * m.mat[1][3] + v.z * m.mat[2][3] + m.mat[3][3];
+
+  if (w != 1) {
+    res.x /= w;
+    res.y /= w;
+    res.z /= w;
+  }
   return res;
 }
 
@@ -213,20 +221,55 @@ bool worldToRaster(Vec3f *raster, const Vec3f pWorld,
   return true;
 }
 
+void setPerspectiveProj(Matrix44f *mat, const float fov_degrees, const float n,
+                        const float f) {
+  float fov_scale = 1 / tanf(fov_degrees / 2 * M_PI / 180);
+
+  mat->mat[0][0] = fov_scale;
+  mat->mat[1][1] = fov_scale;
+  mat->mat[2][2] = -f / (f - n);
+  mat->mat[3][2] = -f * n / (f - n);
+  mat->mat[2][3] = -1;
+}
+
+void worldToRasterProj(Vec3f *raster, const Vec3f world,
+                       const Matrix44f worldToCamera, const Matrix44f pers_proj,
+                       const size_t image_width, const size_t image_height) {
+
+  // convert world to camera space
+  Vec3f camera = multVecMatrix(world, worldToCamera);
+
+  // convert camera to ndc space
+  *raster = multVecMatrix(camera, pers_proj);
+
+  // convert ndc to screen space
+  raster->x = (raster->x + 1) / 2 * image_width;
+  raster->y = (1 - raster->y) / 2 * image_height;
+}
+
 void ccanva_render(uint32_t *image_buffer, float *z_buffer, const Vec3f v0World,
                    const Vec3f v1World, const Vec3f v2World,
-                   const Matrix44f worldToCamera, const float aperture_width,
-                   const float aperture_height, const float focal_len,
-                   const uint32_t image_width, const uint32_t image_height,
-                   bool perspective_correct) {
+                   const Matrix44f worldToCamera, const Matrix44f pers_proj,
+                   const float aperture_width, const float aperture_height,
+                   const float focal_len, const uint32_t image_width,
+                   const uint32_t image_height, bool perspective_correct) {
   Vec3f v0Raster, v1Raster, v2Raster;
   float near = 1;
+#ifdef PERSPECTIVE_PROJ_MATRIX
+  worldToRasterProj(&v0Raster, v0World, worldToCamera, pers_proj, image_width,
+                    image_height);
+  worldToRasterProj(&v1Raster, v1World, worldToCamera, pers_proj, image_width,
+                    image_height);
+  worldToRasterProj(&v2Raster, v2World, worldToCamera, pers_proj, image_width,
+                    image_height);
+#else
   worldToRaster(&v0Raster, v0World, worldToCamera, aperture_width,
                 aperture_height, focal_len, near, image_width, image_height);
   worldToRaster(&v1Raster, v1World, worldToCamera, aperture_width,
                 aperture_height, focal_len, near, image_width, image_height);
   worldToRaster(&v2Raster, v2World, worldToCamera, aperture_width,
                 aperture_height, focal_len, near, image_width, image_height);
+#endif
   Vec3f normal = normalize(
       crossProduct(minus(v1Raster, v0Raster), minus(v2Raster, v1Raster)));
   // Calculate the bounding box of the triangle
