@@ -45,26 +45,40 @@ int main(void) {
                                        SDL_TEXTUREACCESS_STREAMING, 512, 512);
 
   bool quit = false;
+  float alpha = 0.f, beta = 0.f, gamma = 0.f;
   float vel = 0.5;
   Uint64 start = SDL_GetTicks64();
 
   while (!quit) {
     SDL_Event event;
     while (SDL_PollEvent(&event)) {
+      Uint64 delta = SDL_GetTicks64() - start;
       switch (event.type) {
       case SDL_KEYDOWN: {
         switch (event.key.keysym.sym) {
         case SDLK_w:
-          init_camera.y += vel * (SDL_GetTicks64() - start);
+          init_camera.z -= vel * delta;
           break;
         case SDLK_s:
-          init_camera.y -= vel * (SDL_GetTicks64() - start);
+          init_camera.z += vel * delta;
           break;
         case SDLK_a:
-          init_camera.x -= vel * (SDL_GetTicks64() - start);
+          init_camera.x -= vel * delta;
           break;
         case SDLK_d:
-          init_camera.x += vel * (SDL_GetTicks64() - start);
+          init_camera.x += vel * delta;
+          break;
+        case SDLK_RIGHT:
+          alpha += vel * delta * M_PI / 180;
+          break;
+        case SDLK_LEFT:
+          alpha -= vel * delta * M_PI / 180;
+          break;
+        case SDLK_UP:
+          beta += vel * delta * M_PI / 180;
+          break;
+        case SDLK_DOWN:
+          beta -= vel * delta * M_PI / 180;
           break;
         default:
           break;
@@ -85,7 +99,10 @@ int main(void) {
         z_buffer[i * image_width + j] = FLT_MAX;
       }
     }
-    Matrix44f worldToCamera = inverse(lookAt(init_camera, lookat_point));
+
+    Matrix44f rot = rotationMatrix(alpha, beta, gamma);
+    Matrix44f worldToCamera =
+        multMatrix(rot, inverse(lookAt(init_camera, lookat_point)));
     for (uint32_t i = 0; i < numTris; ++i) {
       const Vec3f v0World = vertices[nvertices[i * 3]];
       const Vec3f v1World = vertices[nvertices[i * 3 + 1]];
@@ -94,8 +111,7 @@ int main(void) {
                     worldToCamera, pers_proj, aperture_width, aperture_height,
                     focal_len, image_width, image_height);
     }
-    Uint64 end = SDL_GetTicks64();
-    // printf("Render time taken: %ld\n", end - start);
+
     void *pixels;
     int pitch;
     SDL_LockTexture(buf, NULL, &pixels, &pitch);
@@ -109,7 +125,7 @@ int main(void) {
     SDL_RenderCopy(renderer, buf, NULL, &(SDL_Rect){0, 0, 512, 512});
 
     SDL_RenderPresent(renderer);
-    end = SDL_GetTicks64();
+    Uint64 end = SDL_GetTicks64();
     if (end - start < 33) {
       SDL_Delay(33 - (end - start));
     }

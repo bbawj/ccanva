@@ -52,6 +52,17 @@ Matrix44f identity() {
   return identity;
 }
 
+Matrix44f multMatrix(Matrix44f a, Matrix44f b) {
+  Matrix44f res;
+  for (int i = 0; i < 4; ++i) {
+    for (int j = 0; j < 4; ++j) {
+      res.mat[i][j] = a.mat[i][0] * b.mat[0][j] + a.mat[i][1] * b.mat[1][j] +
+                      a.mat[i][2] * b.mat[2][j] + a.mat[i][3] * b.mat[3][j];
+    }
+  }
+  return res;
+}
+
 Vec3f multVecMatrix(Vec3f v, Matrix44f m) {
   Vec3f res;
   // v.w == 1 homogenous coordinate
@@ -238,8 +249,8 @@ bool worldToRaster(Vec3f *raster, const Vec3f pWorld,
 void setPerspectiveProj(Matrix44f *mat, const float fov_degrees, const float n,
                         const float f) {
   // ratio between the adj and hypo tells us the length of the opposite end
-  // when adj/hypo > 1, the fov is increasing, and we need to scale the x and y
-  // coordinates down to fit into the screen
+  // when adj/hypo > 1, the fov is increasing, and we need to scale the x and
+  // y coordinates down to fit into the screen
   float fov_scale = 1 / tanf(fov_degrees / 2 * M_PI / 180);
 
   mat->mat[0][0] = fov_scale;
@@ -312,8 +323,8 @@ void ccanva_render(uint32_t *image_buffer, float *z_buffer, const Vec3f v0World,
   Vec2f w1_step_aa = {w1_step.x / AA, w1_step.y / AA};
   Vec2f w2_step_aa = {w2_step.x / AA, w2_step.y / AA};
 
-  // Pre calculate the initial barycentric weights at the start of the bounding
-  // box
+  // Pre calculate the initial barycentric weights at the start of the
+  // bounding box
   float w0_old = edgeFunction(v1Raster, v2Raster, (Vec3f){min_x, min_y, 0});
   float w1_old = edgeFunction(v2Raster, v0Raster, (Vec3f){min_x, min_y, 0});
   float w2_old = edgeFunction(v0Raster, v1Raster, (Vec3f){min_x, min_y, 0});
@@ -385,4 +396,15 @@ void ccanva_render(uint32_t *image_buffer, float *z_buffer, const Vec3f v0World,
     }
   }
 }
+
+Matrix44f rotationMatrix(float alpha, float beta, float gamma) {
+  float c1 = cosf(alpha), c2 = cosf(beta), c3 = cosf(gamma);
+  float s1 = sinf(alpha), s2 = sinf(beta), s3 = sinf(gamma);
+  return (Matrix44f){
+      .mat = {{c1 * c2 + s1 * s2 * s3, c2 * s3, c1 * s2 * s3 - c3 * s1, 0},
+              {c3 * s1 * s2 - c1 * s3, c2 * c3, c1 * c3 * s2 + s1 * s3, 0},
+              {c2 * s1, -s2, c1 * c2, 0},
+              {0, 0, 0, 1}}};
+}
+
 #endif // CG_H_
