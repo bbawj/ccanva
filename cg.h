@@ -54,6 +54,7 @@ Matrix44f identity() {
 
 Vec3f multVecMatrix(Vec3f v, Matrix44f m) {
   Vec3f res;
+  // v.w == 1 homogenous coordinate
   res.x =
       v.x * m.mat[0][0] + v.y * m.mat[1][0] + v.z * m.mat[2][0] + m.mat[3][0];
   res.y =
@@ -63,6 +64,7 @@ Vec3f multVecMatrix(Vec3f v, Matrix44f m) {
   float w =
       v.x * m.mat[0][3] + v.y * m.mat[1][3] + v.z * m.mat[2][3] + m.mat[3][3];
 
+  // w should be 1 as it is a homogeneous coordinate, normalize if not 1
   if (w != 1) {
     res.x /= w;
     res.y /= w;
@@ -193,6 +195,18 @@ Matrix44f inverse(Matrix44f m) {
   return inv;
 }
 
+Matrix44f lookAt(Vec3f from, Vec3f to) {
+  Vec3f forward = normalize(minus(from, to));
+  Vec3f temp_up = {0, 1, 0};
+  Vec3f right = normalize(crossProduct(temp_up, forward));
+  Vec3f up = crossProduct(forward, right);
+
+  return (Matrix44f){.mat = {{right.x, right.y, right.z, 0},
+                             {up.x, up.y, up.z, 0},
+                             {forward.x, forward.y, forward.z, 0},
+                             {from.x, from.y, from.z, 1}}};
+}
+
 bool worldToRaster(Vec3f *raster, const Vec3f pWorld,
                    const Matrix44f worldToCamera, const float aperture_width,
                    const float aperture_height, const float focal_len,
@@ -223,6 +237,9 @@ bool worldToRaster(Vec3f *raster, const Vec3f pWorld,
 
 void setPerspectiveProj(Matrix44f *mat, const float fov_degrees, const float n,
                         const float f) {
+  // ratio between the adj and hypo tells us the length of the opposite end
+  // when adj/hypo > 1, the fov is increasing, and we need to scale the x and y
+  // coordinates down to fit into the screen
   float fov_scale = 1 / tanf(fov_degrees / 2 * M_PI / 180);
 
   mat->mat[0][0] = fov_scale;
@@ -242,7 +259,7 @@ void worldToRasterProj(Vec3f *raster, const Vec3f world,
   // convert camera to ndc space
   *raster = multVecMatrix(camera, pers_proj);
 
-  // convert ndc to screen space
+  // viewport transform: convert ndc to screen space
   raster->x = (raster->x + 1) / 2 * image_width;
   raster->y = (1 - raster->y) / 2 * image_height;
 }
@@ -252,7 +269,7 @@ void ccanva_render(uint32_t *image_buffer, float *z_buffer, const Vec3f v0World,
                    const Matrix44f worldToCamera, const Matrix44f pers_proj,
                    const float aperture_width, const float aperture_height,
                    const float focal_len, const uint32_t image_width,
-                   const uint32_t image_height, bool perspective_correct) {
+                   const uint32_t image_height) {
   Vec3f v0Raster, v1Raster, v2Raster;
   float near = 1;
 #ifdef PERSPECTIVE_PROJ_MATRIX
@@ -280,11 +297,9 @@ void ccanva_render(uint32_t *image_buffer, float *z_buffer, const Vec3f v0World,
   float min_x = fmax(fmin(fmin(v0Raster.x, v1Raster.x), v2Raster.x), 0);
   float min_y = fmax(fmin(fmin(v0Raster.y, v1Raster.y), v2Raster.y), 0);
 
-  if (perspective_correct) {
-    v0Raster.z = 1 / v0Raster.z;
-    v1Raster.z = 1 / v1Raster.z;
-    v2Raster.z = 1 / v2Raster.z;
-  }
+  v0Raster.z = 1 / v0Raster.z;
+  v1Raster.z = 1 / v1Raster.z;
+  v2Raster.z = 1 / v2Raster.z;
 
   // Pre calculate the step value as we iterate through the image buffer
   Vec2f w0_step = {.x = (v2Raster.y - v1Raster.y),
@@ -342,31 +357,21 @@ void ccanva_render(uint32_t *image_buffer, float *z_buffer, const Vec3f v0World,
           float w0 = w0_aa_temp / area;
           float w1 = w1_aa_temp / area;
           float w2 = w2_aa_temp / area;
-          float depth;
-          if (perspective_correct) {
-            depth = 1 / (w0 * v0Raster.z + w1 * v1Raster.z + w2 * v2Raster.z);
-          } else {
-            depth = 1 / (w0 * (1 / v0Raster.z) + w1 * (1 / v1Raster.z) +
-                         w2 * (1 / v2Raster.z));
-          }
+          float depth =
+              1 / (w0 * v0Raster.z + w1 * v1Raster.z + w2 * v2Raster.z);
           // Point is behind previously computed point
           if (z_buffer[j * image_width + k] < depth) {
             continue;
           }
           z_buffer[j * image_width + k] = depth;
 
-          if (perspective_correct) {
-            w0 *= depth;
-            w1 *= depth;
-            w2 *= depth;
-            red += v0Raster.z * w0;
-            green += v1Raster.z * w1;
-            blue += v2Raster.z * w2;
-          } else {
-            red += w0;
-            green += w1;
-            blue += w2;
-          }
+          w0 *= depth;
+          w1 *= depth;
+          w2 *= depth;
+          red += v0Raster.z * w0;
+          green += v1Raster.z * w1;
+          blue += v2Raster.z * w2;
+
           ++visible_subpixels;
         }
       }
