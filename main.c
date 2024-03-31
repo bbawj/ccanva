@@ -1,9 +1,9 @@
 #include <SDL2/SDL_keycode.h>
 #include <stdint.h>
-#define OPT_BACKFACE_CULLING
 #define PERSPECTIVE_PROJ_MATRIX
 
 #include "cg.h"
+#include "cow.h"
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_events.h>
 #include <SDL2/SDL_render.h>
@@ -18,11 +18,11 @@
 const uint32_t numTris = 3156;
 
 int main(void) {
-  Vec3f init_camera = {20, -10, 80.400412};
+  Vec3f init_camera = {20, 0, 40.400412};
   Vec3f lookat_point = {0, 0, 0};
 
   float aperture_width = 25, aperture_height = 25, focal_len = 100;
-  uint32_t image_width = 512, image_height = 512;
+  uint32_t image_width = 900, image_height = 900;
 
   Matrix44f pers_proj = {0};
   setPerspectiveProj(&pers_proj, 25, 0.1, 100);
@@ -41,8 +41,9 @@ int main(void) {
       SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
   assert(renderer);
 
-  SDL_Texture *buf = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_ABGR32,
-                                       SDL_TEXTUREACCESS_STREAMING, 512, 512);
+  SDL_Texture *buf =
+      SDL_CreateTexture(renderer, SDL_PIXELFORMAT_ABGR32,
+                        SDL_TEXTUREACCESS_STREAMING, image_width, image_height);
 
   bool quit = false;
   float alpha = 0.f, beta = 0.f, gamma = 0.f;
@@ -67,6 +68,12 @@ int main(void) {
           break;
         case SDLK_d:
           init_camera.x += vel * delta;
+          break;
+        case SDLK_SPACE:
+          init_camera.y -= vel * delta;
+          break;
+        case SDLK_LCTRL:
+          init_camera.y += vel * delta;
           break;
         case SDLK_RIGHT:
           alpha += vel * delta * M_PI / 180;
@@ -103,21 +110,28 @@ int main(void) {
     Matrix44f rot = rotationMatrix(alpha, beta, gamma);
     Matrix44f worldToCamera =
         multMatrix(rot, inverse(lookAt(init_camera, lookat_point)));
+    Vec3f viewDir = normalize(minus(init_camera, lookat_point));
     for (uint32_t i = 0; i < numTris; ++i) {
       const Vec3f v0World = vertices[nvertices[i * 3]];
       const Vec3f v1World = vertices[nvertices[i * 3 + 1]];
       const Vec3f v2World = vertices[nvertices[i * 3 + 2]];
-      ccanva_render(image_buffer, z_buffer, v0World, v1World, v2World,
+      ccanva_render(image_buffer, z_buffer, viewDir, v0World, v1World, v2World,
                     worldToCamera, pers_proj, aperture_width, aperture_height,
                     focal_len, image_width, image_height);
     }
+    // Vec3f cameraRaster;
+    // worldToRasterProj(&cameraRaster, init_camera, worldToCamera, pers_proj,
+    //                   image_width, image_height);
+    //
+    // draw_line(cameraRaster, lookat_point, image_buffer, image_width);
 
     void *pixels;
     int pitch;
-    SDL_LockTexture(buf, NULL, &pixels, &pitch);
+    int ret = SDL_LockTexture(buf, NULL, &pixels, &pitch);
+    assert(ret == 0);
+
     for (int i = 0; i < image_height; ++i) {
-      memcpy(pixels + i * pitch, image_buffer + i * image_width,
-             image_width * sizeof(uint32_t));
+      memcpy(pixels + i * pitch, image_buffer + i * image_width, pitch);
     }
     SDL_UnlockTexture(buf);
     SDL_SetRenderDrawColor(renderer, 0, 0, 0, 0);

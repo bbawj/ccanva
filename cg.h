@@ -5,9 +5,12 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #define AA 2
+#define OPT_BACKFACE_CULLING
+#define PERSPECTIVE_PROJ_MATRIX
 
 #ifdef OPT_BACKFACE_CULLING
 #ifndef BACKFACE_CULLING_THRESHOLD
@@ -26,8 +29,6 @@ typedef struct {
 typedef struct {
   float x, y, z;
 } Vec3f;
-
-#include "cow.h"
 
 typedef struct {
   float mat[4][4];
@@ -275,14 +276,14 @@ void worldToRasterProj(Vec3f *raster, const Vec3f world,
   raster->y = (1 - raster->y) / 2 * image_height;
 }
 
-void ccanva_render(uint32_t *image_buffer, float *z_buffer, const Vec3f v0World,
+void ccanva_render(uint32_t *image_buffer, float *z_buffer,
+                   Vec3f view_direction, const Vec3f v0World,
                    const Vec3f v1World, const Vec3f v2World,
                    const Matrix44f worldToCamera, const Matrix44f pers_proj,
                    const float aperture_width, const float aperture_height,
                    const float focal_len, const uint32_t image_width,
                    const uint32_t image_height) {
   Vec3f v0Raster, v1Raster, v2Raster;
-  float near = 1;
 #ifdef PERSPECTIVE_PROJ_MATRIX
   worldToRasterProj(&v0Raster, v0World, worldToCamera, pers_proj, image_width,
                     image_height);
@@ -291,6 +292,7 @@ void ccanva_render(uint32_t *image_buffer, float *z_buffer, const Vec3f v0World,
   worldToRasterProj(&v2Raster, v2World, worldToCamera, pers_proj, image_width,
                     image_height);
 #else
+  float near = 1;
   worldToRaster(&v0Raster, v0World, worldToCamera, aperture_width,
                 aperture_height, focal_len, near, image_width, image_height);
   worldToRaster(&v1Raster, v1World, worldToCamera, aperture_width,
@@ -329,6 +331,8 @@ void ccanva_render(uint32_t *image_buffer, float *z_buffer, const Vec3f v0World,
   float w1_old = edgeFunction(v2Raster, v0Raster, (Vec3f){min_x, min_y, 0});
   float w2_old = edgeFunction(v0Raster, v1Raster, (Vec3f){min_x, min_y, 0});
   float area = edgeFunction(v0Raster, v1Raster, v2Raster);
+
+  // Vec3f view_direction = {k, j, 0};
   for (uint32_t j = min_y; j < max_y;
        ++j, w0_old += w0_step.y, w1_old += w1_step.y, w2_old += w2_step.y) {
     float w0_temp = w0_old;
@@ -346,7 +350,6 @@ void ccanva_render(uint32_t *image_buffer, float *z_buffer, const Vec3f v0World,
       float w2_aa = w2_temp;
 
 #ifdef OPT_BACKFACE_CULLING
-      Vec3f view_direction = {-k, -j, 0};
       if (acosf(dot(normalize(view_direction), normal)) >
           BACKFACE_CULLING_THRESHOLD) {
         continue;
@@ -388,15 +391,17 @@ void ccanva_render(uint32_t *image_buffer, float *z_buffer, const Vec3f v0World,
       }
       // Only render the pixel if there is something to render
       if (red > 0 || blue > 0 || green > 0) {
+        float facing_ratio = fmax(0, dot(view_direction, normal));
         image_buffer[j * image_width + k] =
-            RGBA((int)(255 * red / visible_subpixels),
-                 (int)(255 * green / visible_subpixels),
-                 (int)(255 * blue / visible_subpixels), 255);
+            RGBA((int)(255 * facing_ratio * red / visible_subpixels),
+                 (int)(255 * facing_ratio * green / visible_subpixels),
+                 (int)(255 * facing_ratio * blue / visible_subpixels), 255);
       }
     }
   }
 }
 
+// TODO: change to quarternions?
 Matrix44f rotationMatrix(float alpha, float beta, float gamma) {
   float c1 = cosf(alpha), c2 = cosf(beta), c3 = cosf(gamma);
   float s1 = sinf(alpha), s2 = sinf(beta), s3 = sinf(gamma);
@@ -405,6 +410,37 @@ Matrix44f rotationMatrix(float alpha, float beta, float gamma) {
               {c3 * s1 * s2 - c1 * s3, c2 * c3, c1 * c3 * s2 + s1 * s3, 0},
               {c2 * s1, -s2, c1 * c2, 0},
               {0, 0, 0, 1}}};
+}
+
+// FIXME: this should use worldToRasterProj
+void draw_line(Vec3f from, Vec3f to, uint32_t *image_buffer,
+               size_t image_width) {
+  int dy = to.y - from.y;
+  int dx = to.x - from.x;
+  if (dx == 0 && dy == 0)
+    return;
+
+  if (abs(dx) > abs(dy)) {
+    if (from.x > to.x) {
+      int tmp = from.x;
+      from.x = to.x;
+      to.x = tmp;
+    }
+    for (int x = from.x; x <= to.x; ++x) {
+      int y = dy * (x - from.x) / dx + from.y;
+      image_buffer[y * image_width + x] = RGBA(255, 255, 255, 255);
+    }
+  } else {
+    if (from.y > to.y) {
+      int tmp = from.y;
+      from.y = to.y;
+      to.y = tmp;
+    }
+    for (int y = from.y; y <= to.y; ++y) {
+      int x = dx * (y - from.y) / dy + from.x;
+      image_buffer[y * image_width + x] = RGBA(255, 255, 255, 255);
+    }
+  }
 }
 
 #endif // CG_H_
