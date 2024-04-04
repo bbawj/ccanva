@@ -1,6 +1,7 @@
 #ifndef CG_H_
 #define CG_H_
 
+#include "geometry.h"
 #include <math.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -9,7 +10,7 @@
 #include <string.h>
 
 #define AA 2
-#define OPT_BACKFACE_CULLING
+// #define OPT_BACKFACE_CULLING
 #define PERSPECTIVE_PROJ_MATRIX
 
 #ifdef OPT_BACKFACE_CULLING
@@ -18,206 +19,15 @@
 #endif // BACKFACE_CULLING_THRESHOLD
 #endif // OPT_BACKFACE_CULLING
 
-typedef struct {
-  int x, y;
-} Vec2i;
-
-typedef struct {
-  float x, y;
-} Vec2f;
-
-typedef struct {
-  float x, y, z;
-} Vec3f;
-
-typedef struct {
-  float mat[4][4];
-} Matrix44f;
-
-Matrix44f identity();
-Vec3f multVecMatrix(Vec3f v, Matrix44f m);
-Matrix44f inverse(Matrix44f m);
 bool worldToRaster(Vec3f *raster, const Vec3f pWorld,
                    const Matrix44f worldToCamera, const float aperture_width,
                    const float aperture_height, const float focal_len,
                    const float near_clipping_plane, const uint32_t image_width,
                    const uint32_t image_height);
 
-Matrix44f identity() {
-  Matrix44f identity = {.mat = {
-                            {1, 0, 0, 0},
-                            {0, 1, 0, 0},
-                            {0, 0, 1, 0},
-                            {0, 0, 0, 1},
-                        }};
-  return identity;
-}
-
-Matrix44f multMatrix(Matrix44f a, Matrix44f b) {
-  Matrix44f res;
-  for (int i = 0; i < 4; ++i) {
-    for (int j = 0; j < 4; ++j) {
-      res.mat[i][j] = a.mat[i][0] * b.mat[0][j] + a.mat[i][1] * b.mat[1][j] +
-                      a.mat[i][2] * b.mat[2][j] + a.mat[i][3] * b.mat[3][j];
-    }
-  }
-  return res;
-}
-
-Vec3f multVecMatrix(Vec3f v, Matrix44f m) {
-  Vec3f res;
-  // v.w == 1 homogenous coordinate
-  res.x =
-      v.x * m.mat[0][0] + v.y * m.mat[1][0] + v.z * m.mat[2][0] + m.mat[3][0];
-  res.y =
-      v.x * m.mat[0][1] + v.y * m.mat[1][1] + v.z * m.mat[2][1] + m.mat[3][1];
-  res.z =
-      v.x * m.mat[0][2] + v.y * m.mat[1][2] + v.z * m.mat[2][2] + m.mat[3][2];
-  float w =
-      v.x * m.mat[0][3] + v.y * m.mat[1][3] + v.z * m.mat[2][3] + m.mat[3][3];
-
-  // w should be 1 as it is a homogeneous coordinate, normalize if not 1
-  if (w != 1) {
-    res.x /= w;
-    res.y /= w;
-    res.z /= w;
-  }
-  return res;
-}
-
-float dot(Vec3f a, Vec3f b) { return a.x * b.x + a.y * b.y + a.z * b.z; }
-
-Vec3f crossProduct(Vec3f a, Vec3f b) {
-  return (Vec3f){
-      .x = a.y * b.z - a.z * b.y,
-      .y = a.x * b.z - a.z * b.x,
-      .z = a.x * b.y - b.y * a.x,
-  };
-}
-
-Vec3f minus(Vec3f a, Vec3f b) {
-  return (Vec3f){
-      .x = a.x - b.x,
-      .y = a.y - b.y,
-      .z = a.z - b.z,
-  };
-}
-
-Vec3f normalize(Vec3f a) {
-  float magnitude = sqrtf(dot(a, a));
-  float inv_mag = 1 / magnitude;
-  return (Vec3f){a.x * inv_mag, a.y * inv_mag, a.z * inv_mag};
-}
-
-// Signed area of the parallelogram defined by vectors (c-a) and (b-a)
-// which can be defined as the cross product of them
-float edgeFunction(const Vec3f a, const Vec3f b, const Vec3f c) {
-  return (c.x - a.x) * (b.y - a.y) - (c.y - a.y) * (b.x - a.x);
-}
-
-Vec3f barycentric(Vec3f v0, Vec3f v1, Vec3f v2, Vec3f p) {
-  float area = edgeFunction(v0, v1, v2);
-  float a0 = edgeFunction(v1, v2, p);
-  float a1 = edgeFunction(v2, v0, p);
-  float a2 = edgeFunction(v0, v1, p);
-
-  Vec3f res = (Vec3f){0, 0, 0};
-
-  // p is within the triangle
-  if (a0 >= 0 && a1 >= 0 && a2 >= 0) {
-    res.x = a0 / area;
-    res.y = a1 / area;
-    res.z = a2 / area;
-  }
-  return res;
-}
-
 #define RGBA(r, g, b, a)                                                       \
   (((r)&0xFF) << 24) | (((g)&0xFF) << 16) | (((b)&0xFF) << 8) |                \
       (((a)&0xFF) << 0)
-
-// Gauss-Jordan inverse
-Matrix44f inverse(Matrix44f m) {
-  Matrix44f inv = identity();
-
-  for (int col = 0; col < 3; ++col) {
-    // Step 1: Choose a pivot > 0
-    int pivot = col;
-    float pivot_size = fabs(m.mat[pivot][pivot]);
-
-    for (int row = col + 1; row < 4; ++row) {
-      float temp = fabs(m.mat[row][col]);
-      if (temp > pivot_size) {
-        pivot = row;
-        pivot_size = temp;
-      }
-    }
-
-    if (pivot_size == 0) {
-      printf("Singular matrix\n");
-      return identity();
-    }
-    // if pivot changed, swap the rows
-    if (pivot != col) {
-      for (int i = 0; i < 4; ++i) {
-        float temp = m.mat[col][i];
-        m.mat[col][i] = m.mat[pivot][i];
-        m.mat[pivot][i] = temp;
-
-        temp = inv.mat[col][i];
-        inv.mat[col][i] = inv.mat[pivot][i];
-        inv.mat[pivot][i] = temp;
-      }
-    }
-    // Step 2: remove bottom half of diagonal
-    for (int row = col + 1; row < 4; ++row) {
-      float constant = -m.mat[row][col] / m.mat[col][col];
-      for (int i = 0; i < 4; ++i) {
-        m.mat[row][i] += constant * m.mat[col][i];
-        inv.mat[row][i] += constant * inv.mat[col][i];
-      }
-      m.mat[row][col] = 0.f;
-    }
-  }
-
-  // Step 3: make pivots == 1
-  for (int row = 0; row < 4; ++row) {
-    float pivot = m.mat[row][row];
-    for (int col = 0; col < 4; ++col) {
-      m.mat[row][col] /= pivot;
-      inv.mat[row][col] /= pivot;
-    }
-    // set the diagonal to 1.0 exactly to avoid
-    // possible round-off error
-    m.mat[row][row] = 1.f;
-  }
-
-  // Step 4: remove top half of diagonal
-  for (int row = 0; row < 4; ++row) {
-    for (int col = row + 1; col < 4; ++col) {
-      float cur = m.mat[row][col];
-      for (int i = 0; i < 4; ++i) {
-        m.mat[row][i] -= cur * m.mat[col][i];
-        inv.mat[row][i] -= cur * inv.mat[col][i];
-      }
-      m.mat[row][col] = 0.f;
-    }
-  }
-
-  return inv;
-}
-
-Matrix44f lookAt(Vec3f from, Vec3f to) {
-  Vec3f forward = normalize(minus(from, to));
-  Vec3f temp_up = {0, 1, 0};
-  Vec3f right = normalize(crossProduct(temp_up, forward));
-  Vec3f up = crossProduct(forward, right);
-
-  return (Matrix44f){.mat = {{right.x, right.y, right.z, 0},
-                             {up.x, up.y, up.z, 0},
-                             {forward.x, forward.y, forward.z, 0},
-                             {from.x, from.y, from.z, 1}}};
-}
 
 bool worldToRaster(Vec3f *raster, const Vec3f pWorld,
                    const Matrix44f worldToCamera, const float aperture_width,
@@ -300,8 +110,8 @@ void ccanva_render(uint32_t *image_buffer, float *z_buffer,
   worldToRaster(&v2Raster, v2World, worldToCamera, aperture_width,
                 aperture_height, focal_len, near, image_width, image_height);
 #endif
-  Vec3f normal = normalize(
-      crossProduct(minus(v1Raster, v0Raster), minus(v2Raster, v1Raster)));
+  Vec3f normal = normalize(crossProduct(minus_vec(v1Raster, v0Raster),
+                                        minus_vec(v2Raster, v1Raster)));
   // Calculate the bounding box of the triangle
   float max_x =
       fmin(fmax(fmax(v0Raster.x, v1Raster.x), v2Raster.x), image_width);
@@ -391,7 +201,8 @@ void ccanva_render(uint32_t *image_buffer, float *z_buffer,
       }
       // Only render the pixel if there is something to render
       if (red > 0 || blue > 0 || green > 0) {
-        float facing_ratio = fmax(0, dot(view_direction, normal));
+        float facing_ratio = 1;
+        // float facing_ratio = fmax(0, dot(view_direction, normal));
         image_buffer[j * image_width + k] =
             RGBA((int)(255 * facing_ratio * red / visible_subpixels),
                  (int)(255 * facing_ratio * green / visible_subpixels),

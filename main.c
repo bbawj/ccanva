@@ -2,6 +2,7 @@
 #include <stdint.h>
 #define PERSPECTIVE_PROJ_MATRIX
 
+#include "camera.h"
 #include "cg.h"
 #include "cow.h"
 #include <SDL2/SDL.h>
@@ -18,8 +19,11 @@
 const uint32_t numTris = 3156;
 
 int main(void) {
-  Vec3f init_camera = {20, 0, 40.400412};
+  Camera c;
+  Vec3f camera_start = {20, 20, 80.400412};
   Vec3f lookat_point = {0, 0, 0};
+
+  init_camera(&c, camera_start, lookat_point);
 
   float aperture_width = 25, aperture_height = 25, focal_len = 100;
   uint32_t image_width = 900, image_height = 900;
@@ -55,38 +59,25 @@ int main(void) {
     while (SDL_PollEvent(&event)) {
       Uint64 delta = SDL_GetTicks64() - start;
       switch (event.type) {
+      case SDL_MOUSEBUTTONUP: {
+        c.moveType = NONE;
+      } break;
+      case SDL_MOUSEBUTTONDOWN: {
+        if (event.key.keysym.mod & KMOD_CTRL) {
+          c.moveType = event.button.button == SDL_BUTTON_LEFT     ? TUMBLE
+                       : event.button.button == SDL_BUTTON_MIDDLE ? TRACK
+                       : event.button.button == SDL_BUTTON_RIGHT  ? DOLLY
+                                                                  : NONE;
+        }
+      } break;
+      case SDL_MOUSEMOTION: {
+        camera_move(&c, delta, event.motion.xrel, event.motion.yrel);
+      } break;
+      case SDL_MOUSEWHEEL: {
+        camera_move(&c, delta, event.wheel.x, event.wheel.preciseY);
+      } break;
       case SDL_KEYDOWN: {
         switch (event.key.keysym.sym) {
-        case SDLK_w:
-          init_camera.z -= vel * delta;
-          break;
-        case SDLK_s:
-          init_camera.z += vel * delta;
-          break;
-        case SDLK_a:
-          init_camera.x -= vel * delta;
-          break;
-        case SDLK_d:
-          init_camera.x += vel * delta;
-          break;
-        case SDLK_SPACE:
-          init_camera.y -= vel * delta;
-          break;
-        case SDLK_LCTRL:
-          init_camera.y += vel * delta;
-          break;
-        case SDLK_RIGHT:
-          alpha += vel * delta * M_PI / 180;
-          break;
-        case SDLK_LEFT:
-          alpha -= vel * delta * M_PI / 180;
-          break;
-        case SDLK_UP:
-          beta += vel * delta * M_PI / 180;
-          break;
-        case SDLK_DOWN:
-          beta -= vel * delta * M_PI / 180;
-          break;
         default:
           break;
         }
@@ -107,10 +98,9 @@ int main(void) {
       }
     }
 
-    Matrix44f rot = rotationMatrix(alpha, beta, gamma);
-    Matrix44f worldToCamera =
-        multMatrix(rot, inverse(lookAt(init_camera, lookat_point)));
-    Vec3f viewDir = normalize(minus(init_camera, lookat_point));
+    // Matrix44f rot = rotationMatrix(alpha, beta, gamma);
+    Matrix44f worldToCamera = inverse(c.cam_to_world);
+    Vec3f viewDir = normalize(minus_vec(c.pos, lookat_point));
     for (uint32_t i = 0; i < numTris; ++i) {
       const Vec3f v0World = vertices[nvertices[i * 3]];
       const Vec3f v1World = vertices[nvertices[i * 3 + 1]];
@@ -119,11 +109,6 @@ int main(void) {
                     worldToCamera, pers_proj, aperture_width, aperture_height,
                     focal_len, image_width, image_height);
     }
-    // Vec3f cameraRaster;
-    // worldToRasterProj(&cameraRaster, init_camera, worldToCamera, pers_proj,
-    //                   image_width, image_height);
-    //
-    // draw_line(cameraRaster, lookat_point, image_buffer, image_width);
 
     void *pixels;
     int pitch;
