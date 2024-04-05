@@ -1,3 +1,4 @@
+#include "log.h"
 #include <SDL2/SDL_keycode.h>
 #include <stdint.h>
 #define PERSPECTIVE_PROJ_MATRIX
@@ -26,7 +27,7 @@ int main(void) {
   init_camera(&c, camera_start, lookat_point);
 
   float aperture_width = 25, aperture_height = 25, focal_len = 100;
-  uint32_t image_width = 900, image_height = 900;
+  uint32_t image_width = WINDOW_WIDTH, image_height = WINDOW_HEIGHT;
 
   Matrix44f pers_proj = {0};
   setPerspectiveProj(&pers_proj, 25, 0.1, 100);
@@ -121,7 +122,8 @@ int main(void) {
     SDL_UnlockTexture(buf);
     SDL_SetRenderDrawColor(renderer, 0, 0, 0, 0);
     SDL_RenderClear(renderer);
-    SDL_RenderCopy(renderer, buf, NULL, &(SDL_Rect){0, 0, 512, 512});
+    SDL_RenderCopy(renderer, buf, NULL,
+                   &(SDL_Rect){0, 0, image_width, image_height});
 
     SDL_RenderPresent(renderer);
     Uint64 end = SDL_GetTicks64();

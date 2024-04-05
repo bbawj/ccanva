@@ -51,8 +51,12 @@ void camera_move(Camera *c, uint64_t delta, int x_rel, int y_rel) {
     c->rotation_matrix = quat_rotation_matrix(&c->rotation);
   } break;
   case TRACK: {
-    c->lookat.x += x_rel * TRACK_VEL;
-    c->lookat.y += y_rel * TRACK_VEL;
+    // Rotate the mouse displacement according to the camera, placing it
+    // perpendicular to the screen before applying it to the target point
+    c->lookat =
+        add_vec(c->lookat,
+                multVecMatrix((Vec3f){x_rel * TRACK_VEL, y_rel * TRACK_VEL, 0},
+                              c->rotation_matrix));
   } break;
   case DOLLY: {
     c->dist_to_lookat += y_rel * DOLLY_VEL;
