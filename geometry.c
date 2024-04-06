@@ -71,7 +71,7 @@ Vec3f crossProduct(Vec3f a, Vec3f b) {
   };
 }
 
-Vec3f add_vec(Vec3f a, Vec3f b) {
+Vec3f vec_add(Vec3f a, Vec3f b) {
   return (Vec3f){
       .x = a.x + b.x,
       .y = a.y + b.y,
@@ -79,7 +79,7 @@ Vec3f add_vec(Vec3f a, Vec3f b) {
   };
 }
 
-Vec3f minus_vec(Vec3f a, Vec3f b) {
+Vec3f vec_minus(Vec3f a, Vec3f b) {
   return (Vec3f){
       .x = a.x - b.x,
       .y = a.y - b.y,
@@ -190,7 +190,7 @@ Matrix44f inverse(Matrix44f m) {
 }
 
 Matrix44f lookAt(Vec3f from, Vec3f to) {
-  Vec3f forward = normalize(minus_vec(from, to));
+  Vec3f forward = normalize(vec_minus(from, to));
   Vec3f temp_up = {0, 1, 0};
   Vec3f right = normalize(crossProduct(temp_up, forward));
   Vec3f up = crossProduct(forward, right);
@@ -229,7 +229,7 @@ Quat quat_multiply(Quat q1, Quat q2) {
   Vec3f v = q1.v;
   Vec3f w = q2.v;
   return QUAT_NEW(s * t - dot(v, w),
-                  add_vec(add_vec(mult_scalar_vec(s, w), mult_scalar_vec(t, v)),
+                  vec_add(vec_add(mult_scalar_vec(s, w), mult_scalar_vec(t, v)),
                           crossProduct(v, w)));
 }
 

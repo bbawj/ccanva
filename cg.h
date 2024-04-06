@@ -111,8 +111,8 @@ void ccanva_render(uint32_t *image_buffer, float *z_buffer,
   worldToRaster(&v2Raster, v2World, worldToCamera, aperture_width,
                 aperture_height, focal_len, near, image_width, image_height);
 #endif
-  Vec3f normal = normalize(crossProduct(minus_vec(v1Raster, v0Raster),
-                                        minus_vec(v2Raster, v1Raster)));
+  Vec3f normal = normalize(crossProduct(vec_minus(v1Raster, v0Raster),
+                                        vec_minus(v2Raster, v1Raster)));
 
   // Calculate the bounding box of the triangle
   float max_x =
@@ -203,10 +203,15 @@ void ccanva_render(uint32_t *image_buffer, float *z_buffer,
       }
       // Only render the pixel if there is something to render
       if (red > 0 || blue > 0 || green > 0) {
-        Vec3f color = mult_scalar_vec(
+        Vec3f diffuse = mult_scalar_vec(
             light->intensity,
             mult_scalar_vec(fmax(dot(normalize(light->dir), normal), 0),
                             light->color));
+        Vec3f specular = mult_scalar_vec(
+            fmax(dot(normal, normalize(vec_add(light->dir, view_direction))),
+                 0),
+            light->color);
+        Vec3f color = vec_add(diffuse, specular);
 
         // float facing_ratio = fmax(0, dot(view_direction, normal));
         image_buffer[j * image_width + k] =

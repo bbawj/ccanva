@@ -106,7 +106,7 @@ int main(void) {
 
     // Matrix44f rot = rotationMatrix(alpha, beta, gamma);
     Matrix44f worldToCamera = inverse(c.cam_to_world);
-    Vec3f viewDir = normalize(minus_vec(c.pos, lookat_point));
+    Vec3f viewDir = normalize(vec_minus(c.pos, lookat_point));
     for (uint32_t i = 0; i < numTris; ++i) {
       const Vec3f v0World = vertices[nvertices[i * 3]];
       const Vec3f v1World = vertices[nvertices[i * 3 + 1]];

@@ -6,7 +6,7 @@
 
 void static update_cam_to_world(Camera *c) {
   Vec3f camera_dir = multVecMatrix((Vec3f){0, 0, 1}, c->rotation_matrix);
-  c->pos = add_vec(c->lookat, mult_scalar_vec(c->dist_to_lookat, camera_dir));
+  c->pos = vec_add(c->lookat, mult_scalar_vec(c->dist_to_lookat, camera_dir));
   c->cam_to_world = c->rotation_matrix;
   c->cam_to_world.mat[3][0] = c->pos.x;
   c->cam_to_world.mat[3][1] = c->pos.y;
@@ -54,7 +54,7 @@ void camera_move(Camera *c, uint64_t delta, int x_rel, int y_rel) {
     // Rotate the mouse displacement according to the camera, placing it
     // perpendicular to the screen before applying it to the target point
     c->lookat =
-        add_vec(c->lookat,
+        vec_add(c->lookat,
                 multVecMatrix((Vec3f){x_rel * TRACK_VEL, y_rel * TRACK_VEL, 0},
                               c->rotation_matrix));
   } break;
