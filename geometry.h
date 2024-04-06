@@ -14,6 +14,7 @@ typedef struct {
 } Vec3f;
 
 Vec3f mult_scalar_vec(float s, Vec3f v);
+float vec_magnitude(Vec3f v);
 float dot(Vec3f a, Vec3f b);
 Vec3f crossProduct(Vec3f a, Vec3f b);
 Vec3f add_vec(Vec3f a, Vec3f b);
@@ -29,6 +30,7 @@ typedef struct {
 Matrix44f identity();
 Vec3f multVecMatrix(Vec3f v, Matrix44f m);
 Matrix44f inverse(Matrix44f m);
+Matrix44f transpose(Matrix44f m);
 Matrix44f lookAt(Vec3f from, Vec3f to);
 
 typedef struct {

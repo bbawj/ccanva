@@ -1,3 +1,4 @@
+#include "geometry.h"
 #include "log.h"
 #include <SDL2/SDL_keycode.h>
 #include <stdint.h>
@@ -6,6 +7,8 @@
 #include "camera.h"
 #include "cg.h"
 #include "cow.h"
+#include "geometry.h"
+#include "light.h"
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_events.h>
 #include <SDL2/SDL_render.h>
@@ -20,8 +23,10 @@
 const uint32_t numTris = 3156;
 
 int main(void) {
+  Light LIGHT = {(Vec3f){0, 1, 0}, (Vec3f){1, 1, 1}, 1};
+
   Camera c;
-  Vec3f camera_start = {20, 20, 80.400412};
+  Vec3f camera_start = {0, 20, 80.400412};
   Vec3f lookat_point = {0, 0, 0};
 
   init_camera(&c, camera_start, lookat_point);
@@ -108,7 +113,7 @@ int main(void) {
       const Vec3f v2World = vertices[nvertices[i * 3 + 2]];
       ccanva_render(image_buffer, z_buffer, viewDir, v0World, v1World, v2World,
                     worldToCamera, pers_proj, aperture_width, aperture_height,
-                    focal_len, image_width, image_height);
+                    focal_len, image_width, image_height, &LIGHT);
     }
 
     void *pixels;

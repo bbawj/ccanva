@@ -23,6 +23,19 @@ Matrix44f multMatrix(Matrix44f a, Matrix44f b) {
   return res;
 }
 
+Matrix44f transpose(Matrix44f m) {
+  Matrix44f res = m;
+  for (int i = 0; i < 4; ++i) {
+    for (int j = 0; j < 4; ++j) {
+      if (i == j)
+        continue;
+
+      res.mat[i][j] = m.mat[j][i];
+    }
+  }
+  return res;
+}
+
 Vec3f multVecMatrix(Vec3f v, Matrix44f m) {
   Vec3f res;
   // v.w == 1 homogenous coordinate
@@ -74,8 +87,10 @@ Vec3f minus_vec(Vec3f a, Vec3f b) {
   };
 }
 
+float vec_magnitude(Vec3f v) { return sqrtf(dot(v, v)); }
+
 Vec3f normalize(Vec3f a) {
-  float magnitude = sqrtf(dot(a, a));
+  float magnitude = vec_magnitude(a);
   float inv_mag = 1 / magnitude;
   return (Vec3f){a.x * inv_mag, a.y * inv_mag, a.z * inv_mag};
 }

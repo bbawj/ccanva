@@ -2,6 +2,7 @@
 #define CG_H_
 
 #include "geometry.h"
+#include "light.h"
 #include <math.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -92,7 +93,7 @@ void ccanva_render(uint32_t *image_buffer, float *z_buffer,
                    const Matrix44f worldToCamera, const Matrix44f pers_proj,
                    const float aperture_width, const float aperture_height,
                    const float focal_len, const uint32_t image_width,
-                   const uint32_t image_height) {
+                   const uint32_t image_height, Light *light) {
   Vec3f v0Raster, v1Raster, v2Raster;
 #ifdef PERSPECTIVE_PROJ_MATRIX
   worldToRasterProj(&v0Raster, v0World, worldToCamera, pers_proj, image_width,
@@ -112,6 +113,7 @@ void ccanva_render(uint32_t *image_buffer, float *z_buffer,
 #endif
   Vec3f normal = normalize(crossProduct(minus_vec(v1Raster, v0Raster),
                                         minus_vec(v2Raster, v1Raster)));
+
   // Calculate the bounding box of the triangle
   float max_x =
       fmin(fmax(fmax(v0Raster.x, v1Raster.x), v2Raster.x), image_width);
@@ -201,12 +203,16 @@ void ccanva_render(uint32_t *image_buffer, float *z_buffer,
       }
       // Only render the pixel if there is something to render
       if (red > 0 || blue > 0 || green > 0) {
-        float facing_ratio = 1;
+        Vec3f color = mult_scalar_vec(
+            light->intensity,
+            mult_scalar_vec(fmax(dot(normalize(light->dir), normal), 0),
+                            light->color));
+
         // float facing_ratio = fmax(0, dot(view_direction, normal));
         image_buffer[j * image_width + k] =
-            RGBA((int)(255 * facing_ratio * red / visible_subpixels),
-                 (int)(255 * facing_ratio * green / visible_subpixels),
-                 (int)(255 * facing_ratio * blue / visible_subpixels), 255);
+            RGBA((int)(255 * color.x * red / visible_subpixels),
+                 (int)(255 * color.y * green / visible_subpixels),
+                 (int)(255 * color.z * blue / visible_subpixels), 255);
       }
     }
   }
